@@ -34,6 +34,8 @@
 #include <math.h>
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
+#elif defined(__SWITCH__)
+#include <malloc.h>
 #elif defined(__linux__)
 #include <malloc.h>
 #elif defined(__FreeBSD__)
@@ -42018,7 +42020,7 @@ static JSValue js___date_clock(JSContext *ctx, JSValueConst this_val,
 /* OS dependent. d = argv[0] is in ms from 1970. Return the difference
    between UTC time and local time 'd' in minutes */
 static int getTimezoneOffset(int64_t time) {
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__SWITCH__)
     /* XXX: TODO */
     return 0;
 #else

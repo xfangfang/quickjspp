@@ -42,8 +42,10 @@
 #include <conio.h>
 #include <utime.h>
 #else
+#ifndef __SWITCH__
 #include <dlfcn.h>
 #include <termios.h>
+#endif
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 
@@ -460,7 +462,7 @@ typedef JSModuleDef *(JSInitModuleFunc)(JSContext *ctx,
                                         const char *module_name);
 
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__SWITCH__)
 static JSModuleDef *js_module_loader_so(JSContext *ctx,
                                         const char *module_name)
 {
@@ -801,6 +803,7 @@ typedef struct {
 
 static void js_std_file_finalizer(JSRuntime *rt, JSValue val)
 {
+#ifndef __SWITCH__
     JSSTDFile *s = JS_GetOpaque(val, js_std_file_class_id);
     if (s) {
         if (s->f && s->close_in_finalizer) {
@@ -811,6 +814,7 @@ static void js_std_file_finalizer(JSRuntime *rt, JSValue val)
         }
         js_free_rt(rt, s);
     }
+#endif
 }
 
 static ssize_t js_get_errno(ssize_t ret)
@@ -911,6 +915,9 @@ static JSValue js_std_open(JSContext *ctx, JSValueConst this_val,
 static JSValue js_std_popen(JSContext *ctx, JSValueConst this_val,
                             int argc, JSValueConst *argv)
 {
+#ifdef __SWITCH__
+    return JS_EXCEPTION;
+#else
     const char *filename, *mode = NULL;
     FILE *f;
     int err;
@@ -942,6 +949,7 @@ static JSValue js_std_popen(JSContext *ctx, JSValueConst this_val,
     JS_FreeCString(ctx, filename);
     JS_FreeCString(ctx, mode);
     return JS_EXCEPTION;
+#endif
 }
 
 static JSValue js_std_fdopen(JSContext *ctx, JSValueConst this_val,
@@ -1042,6 +1050,9 @@ static JSValue js_std_file_puts(JSContext *ctx, JSValueConst this_val,
 static JSValue js_std_file_close(JSContext *ctx, JSValueConst this_val,
                                  int argc, JSValueConst *argv)
 {
+#ifdef __SWITCH__
+    return JS_EXCEPTION;
+#else
     JSSTDFile *s = JS_GetOpaque2(ctx, this_val, js_std_file_class_id);
     int err;
     if (!s)
@@ -1054,6 +1065,7 @@ static JSValue js_std_file_close(JSContext *ctx, JSValueConst this_val,
         err = js_get_errno(fclose(s->f));
     s->f = NULL;
     return JS_NewInt32(ctx, err);
+#endif
 }
 
 static JSValue js_std_file_printf(JSContext *ctx, JSValueConst this_val,
@@ -1280,7 +1292,12 @@ static JSValue js_std_file_putByte(JSContext *ctx, JSValueConst this_val,
 }
 
 /* urlGet */
-
+#ifdef __SWITCH__
+static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
+                             int argc, JSValueConst *argv) {
+    return JS_EXCEPTION;
+}
+#else
 #define URL_GET_PROGRAM "curl -s -i"
 #define URL_GET_BUF_SIZE 4096
 
@@ -1464,6 +1481,7 @@ static JSValue js_std_urlGet(JSContext *ctx, JSValueConst this_val,
     JS_FreeValue(ctx, response);
     return JS_EXCEPTION;
 }
+#endif
 
 static JSClassDef js_std_file_class = {
     "FILE",
@@ -1715,6 +1733,17 @@ static JSValue js_os_ttySetRaw(JSContext *ctx, JSValueConst this_val,
         handle = (HANDLE)_get_osfhandle(1); /* corresponding output */
         SetConsoleMode(handle, ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT | __ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
+    return JS_UNDEFINED;
+}
+#elif defined(__SWITCH__)
+static JSValue js_os_ttyGetWinSize(JSContext *ctx, JSValueConst this_val,
+                                   int argc, JSValueConst *argv)
+{
+    return JS_NULL;
+}
+static JSValue js_os_ttySetRaw(JSContext *ctx, JSValueConst this_val,
+                               int argc, JSValueConst *argv)
+{
     return JS_UNDEFINED;
 }
 #else
@@ -2843,6 +2872,9 @@ static int my_execvpe(const char *filename, char **argv, char **envp)
 static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
 {
+#ifdef __SWITCH__
+    return JS_EXCEPTION;
+#else
     JSValueConst options, args = argv[0];
     JSValue val, ret_val;
     const char **exec_argv, *file = NULL, *str, *cwd = NULL;
@@ -3035,12 +3067,16 @@ static JSValue js_os_exec(JSContext *ctx, JSValueConst this_val,
  exception:
     ret_val = JS_EXCEPTION;
     goto done;
+#endif
 }
 
 /* waitpid(pid, block) -> [pid, status] */
 static JSValue js_os_waitpid(JSContext *ctx, JSValueConst this_val,
                              int argc, JSValueConst *argv)
 {
+#ifdef __SWITCH__
+    return JS_EXCEPTION;
+#else
     int pid, status, options, ret;
     JSValue obj;
     
@@ -3063,12 +3099,16 @@ static JSValue js_os_waitpid(JSContext *ctx, JSValueConst this_val,
     JS_DefinePropertyValueUint32(ctx, obj, 1, JS_NewInt32(ctx, status),
                                  JS_PROP_C_W_E);
     return obj;
+#endif
 }    
 
 /* pipe() -> [read_fd, write_fd] or null if error */
 static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
                           int argc, JSValueConst *argv)
 {
+#ifdef __SWITCH__
+    return JS_NULL;
+#else
     int pipe_fds[2], ret;
     JSValue obj;
     
@@ -3083,6 +3123,7 @@ static JSValue js_os_pipe(JSContext *ctx, JSValueConst this_val,
     JS_DefinePropertyValueUint32(ctx, obj, 1, JS_NewInt32(ctx, pipe_fds[1]),
                                  JS_PROP_C_W_E);
     return obj;
+#endif
 }
 
 /* kill(pid, sig) */
@@ -3188,6 +3229,9 @@ static void js_sab_dup(void *opaque, void *ptr)
 
 static JSWorkerMessagePipe *js_new_message_pipe(void)
 {
+#ifdef __SWITCH__
+    return NULL;
+#else
     JSWorkerMessagePipe *ps;
     int pipe_fds[2];
     
@@ -3206,6 +3250,7 @@ static JSWorkerMessagePipe *js_new_message_pipe(void)
     ps->read_fd = pipe_fds[0];
     ps->write_fd = pipe_fds[1];
     return ps;
+#endif
 }
 
 static JSWorkerMessagePipe *js_dup_message_pipe(JSWorkerMessagePipe *ps)
